@@ -1,37 +1,23 @@
-# YARA — Agente de Diagnóstico de Automações com IA
+# YARA — Agente de Diagnóstico de Automações
 
 A **YARA** é uma agente de inteligência artificial desenvolvida para identificar oportunidades de automação em processos empresariais.
 
-Por meio de uma entrevista guiada, coleta informações sobre a empresa, suas atividades, ferramentas utilizadas e principais dificuldades. Com base nas respostas, gera um relatório personalizado em PDF com oportunidades de automação e envia o documento por e-mail ao visitante, com uma cópia para o responsável pelo projeto.
+Por meio de uma entrevista guiada, coleta informações sobre a empresa, suas atividades, ferramentas utilizadas e principais dificuldades. A partir dessas informações, gera um relatório personalizado em PDF com oportunidades de automação e envia o documento por e-mail ao visitante.
 
-O projeto demonstra a integração de IA generativa, automação de workflows, geração de documentos, envio de e-mails e mecanismos de controle de acesso e utilização.
+O projeto demonstra a aplicação prática de **IA generativa, automação de workflows, integração de APIs e geração automatizada de documentos**.
 
 ## Funcionalidades
 
-* **Entrevista guiada por IA:** coleta informações relevantes sobre a empresa e seus processos.
-* **Diagnóstico personalizado:** identifica oportunidades de automação a partir das informações fornecidas pelo visitante.
-* **Geração de relatório em PDF:** transforma o diagnóstico em um documento personalizado.
-* **Envio automático por e-mail:** encaminha o relatório ao visitante e uma cópia para o responsável pelo projeto.
-* **Controle de acesso no servidor:** valida as senhas sem expor os valores reais no código do navegador.
-* **Limites de utilização:** permite um relatório por senha de uso normal e até cinco relatórios por dia para a senha mestra.
-* **Controle do fluxo de conversa:** orienta a interação para o diagnóstico e encerra o atendimento quando o visitante insiste em conversas fora do fluxo definido, após três ocorrências.
-* **Proteção do backend:** utiliza um proxy PHP para intermediar as requisições entre a interface e os webhooks do n8n.
-
-## Tecnologias utilizadas
-
-| Tecnologia             | Aplicação no projeto                              |
-| ---------------------- | ------------------------------------------------- |
-| HTML, CSS e JavaScript | Interface do usuário                              |
-| n8n                    | Orquestração dos workflows e lógica do agente     |
-| OpenAI                 | Interpretação das respostas e geração de conteúdo |
-| PDFShift               | Conversão do relatório HTML em PDF                |
-| Gmail                  | Envio dos relatórios por e-mail                   |
-| PHP e cURL             | Proxy entre o navegador e o backend               |
-| n8n Data Tables        | Persistência dos registros de relatórios          |
+* **Entrevista guiada por IA** — coleta informações relevantes sobre a empresa e seus processos.
+* **Diagnóstico personalizado** — identifica oportunidades de automação a partir das respostas do visitante.
+* **Geração automática de relatório** — produz um diagnóstico estruturado em PDF.
+* **Envio por e-mail** — encaminha o relatório ao visitante e uma cópia para o responsável pelo projeto.
+* **Controle de acesso no servidor** — as credenciais de acesso não ficam expostas no código da interface.
+* **Controle de utilização** — senha normal permite um relatório; senha mestra possui limite de cinco relatórios por dia.
+* **Controle de conversação** — o agente mantém o visitante dentro do fluxo necessário para o diagnóstico e encerra o atendimento após três insistências em conversas fora do escopo.
+* **Proxy PHP** — intermedia a comunicação entre a interface pública e os workflows do n8n, mantendo os endpoints de backend fora da interface.
 
 ## Arquitetura
-
-O projeto separa a interface pública da lógica de processamento e das integrações externas.
 
 ```text
 ┌──────────────────────────────┐
@@ -53,7 +39,8 @@ O projeto separa a interface pública da lógica de processamento e das integra�
 │           ↓                  │
 │  Controle do fluxo           │
 │           ↓                  │
-│  Agente de IA + memória      │
+│  Agente YARA                 │
+│  + memória + ferramentas     │
 │           ↓                  │
 │  Geração do relatório        │
 └──────────────┬───────────────┘
@@ -66,101 +53,111 @@ O projeto separa a interface pública da lógica de processamento e das integra�
         Relatório em PDF
                │
                ▼
-       Registro no n8n
-         Data Tables
+       n8n Data Tables
 ```
 
-O workflow principal gerencia a conversa e as regras de acesso. A geração do relatório é executada por um workflow separado, chamado pelo agente como ferramenta. Essa divisão organiza as responsabilidades e facilita a manutenção das integrações.
+O workflow responsável pela conversa gerencia a entrevista, as regras de acesso e o controle do fluxo. A geração do relatório é realizada por um workflow separado, acionado pelo agente como uma ferramenta.
 
-## Controle de acesso e utilização
+Essa separação permite organizar a lógica da aplicação e as integrações externas em componentes distintos.
 
-O projeto implementa regras de uso para reduzir abusos e controlar o consumo de recursos externos.
+## Tecnologias
 
-* **Senha normal:** permite a geração de um único relatório por senha, com validação no servidor.
-* **Senha mestra:** permite até cinco relatórios por dia, com limite controlado no servidor.
-* **Validação fora do navegador:** as senhas não ficam armazenadas no JavaScript público da interface.
-* **Condução da conversa:** o agente prioriza as perguntas necessárias ao diagnóstico e encerra o atendimento após três insistências em conversas fora do fluxo estabelecido.
-* **Separação entre interface e backend:** o navegador se comunica com o proxy PHP, que encaminha as requisições aos endpoints configurados.
+| Tecnologia                  | Aplicação                                     |
+| --------------------------- | --------------------------------------------- |
+| **HTML / CSS / JavaScript** | Interface web                                 |
+| **n8n**                     | Orquestração dos workflows e lógica do agente |
+| **OpenAI**                  | Inteligência artificial e geração de conteúdo |
+| **PDFShift**                | Geração do PDF a partir do relatório          |
+| **Gmail**                   | Envio automatizado dos relatórios             |
+| **PHP / cURL**              | Proxy entre frontend e backend                |
+| **n8n Data Tables**         | Registro dos relatórios gerados               |
 
-Esses mecanismos complementam a proteção do projeto. Em uma implantação real, também é importante configurar HTTPS, limitar requisições abusivas e proteger credenciais, endpoints e registros de utilização.
+## Fluxo do atendimento
 
-## Estrutura do repositório
+```text
+Visitante
+    │
+    ▼
+Validação de acesso
+    │
+    ▼
+Entrevista com YARA
+    │
+    ├── Resposta válida ──────────────┐
+    │                                 │
+    └── Conversa fora do fluxo        │
+            │                         │
+            ├── 1ª ocorrência ───────┤
+            ├── 2ª ocorrência ───────┤
+            └── 3ª ocorrência → encerra
+                                      │
+                                      ▼
+                         10 respostas válidas
+                                      │
+                                      ▼
+                         Geração do relatório
+                                      │
+                         ┌────────────┴────────────┐
+                         ▼                         ▼
+                    PDF gerado              Registro do relatório
+                         │
+                         ▼
+                   Envio por e-mail
+```
+
+O agente também possui regras específicas para interpretar respostas negativas ou diferentes formatos de resposta sem classificá-las indevidamente como conversas fora do fluxo.
+
+## Controle e segurança
+
+O projeto utiliza mecanismos de controle para proteger o uso da aplicação e evitar exposição desnecessária de informações sensíveis.
+
+* As senhas são validadas no **servidor**, e não na interface pública.
+* A senha de uso normal permite apenas um relatório.
+* A senha mestra possui limite diário de cinco relatórios.
+* Os endpoints do n8n não ficam diretamente expostos na interface.
+* O proxy PHP intermedia as requisições entre o navegador e o backend.
+* Credenciais e configurações privadas são mantidas fora da versão pública do projeto.
+* Os workflows publicados foram sanitizados para remover credenciais, identificadores internos e informações específicas do ambiente original.
+
+## Estrutura do projeto
 
 ```text
 agente-diagnostico-automacao/
-├── index.html
-├── README.md
+├── api/
+│   └── yara/
+│       ├── auth.php
+│       ├── chat.php
+│       └── config.example.php
+│
 ├── imgs/
 │   └── Yara.webp
+│
 ├── workflows/
 │   ├── Agente_YARA_Chat.json
 │   └── Agente_YARA_Gerar_Relatorio.json
-└── api/
-    └── yara/
-        ├── auth.php
-        ├── chat.php
-        └── config.example.php
+│
+├── index.html
+├── .gitignore
+└── README.md
 ```
 
-## Como executar o projeto
+## Destaques técnicos
 
-A execução completa exige um servidor PHP com suporte a cURL e uma instância do n8n configurada.
+O projeto reúne diferentes componentes em uma única aplicação:
 
-### 1. Configurar os workflows no n8n
-
-1. Importe os arquivos JSON disponíveis na pasta `workflows/`.
-2. Configure as credenciais necessárias para OpenAI, PDFShift e Gmail.
-3. Crie a Data Table `relatorios-yara`, com as colunas utilizadas pelo workflow para registrar os relatórios.
-4. Vincule o workflow de geração de relatórios ao agente como ferramenta.
-5. Configure as URLs permitidas para acesso aos webhooks, as regras de autenticação, os limites de utilização e o endereço de e-mail interno.
-6. Revise as configurações de persistência e ative os workflows.
-
-Os nomes das tabelas, os campos e os nós utilizados devem corresponder aos arquivos exportados incluídos no repositório.
-
-### 2. Configurar o proxy PHP
-
-1. Copie `api/yara/config.example.php` para `api/yara/config.php`.
-2. Configure no arquivo local os endereços dos endpoints do n8n necessários ao funcionamento da aplicação.
-3. Publique os arquivos da interface e da pasta `api/` em um servidor com PHP e cURL.
-4. Configure HTTPS e verifique se o proxy aceita somente os destinos previstos.
-5. Confirme que o arquivo `config.php` não será enviado ao GitHub.
-
-### 3. Configurar a interface
-
-Verifique os caminhos relativos dos arquivos, incluindo o avatar em `imgs/Yara.webp`, e confirme se as requisições da interface correspondem às rotas disponibilizadas pelo proxy PHP.
-
-## Segurança e publicação
-
-Este repositório contém uma versão sanitizada do projeto, preparada para apresentação pública e estudo técnico.
-
-Este repositório contém uma versão sanitizada do projeto. Ao configurar ou adaptar a aplicação:
-
-* Não inclua senhas reais, tokens, credenciais ou arquivos de configuração privados.
-* Utilize `config.example.php` como modelo e mantenha `config.php` fora do controle de versão.
-* Revise os arquivos JSON dos workflows antes de novos commits ou exportações.
-* Não publique identificadores internos, URLs privadas, dados pessoais ou registros de execução desnecessários.
-* Proteja os endpoints e aplique controles adicionais de requisições conforme o ambiente de implantação.
-* Lembre-se de que ocultar a URL do n8n por meio de um proxy não substitui autenticação, autorização ou validação no servidor.
-
-O arquivo `.gitignore` deve proteger os arquivos privados e outros dados que não devem ser versionados.
-
-## Objetivos técnicos demonstrados
-
-Este projeto reúne conhecimentos de:
-
-* Desenvolvimento de interfaces web.
-* Engenharia de prompts e integração com IA generativa.
-* Automação de processos com workflows.
-* Integração de APIs e serviços externos.
-* Geração dinâmica de documentos PDF.
-* Comunicação automatizada por e-mail.
-* Desenvolvimento de endpoints e proxy com PHP.
-* Controle de acesso, limites de utilização e validações no servidor.
-* Organização de componentes e separação de responsabilidades.
+* Desenvolvimento de interface web sem frameworks.
+* Integração de IA generativa com workflows automatizados.
+* Agente com fluxo conversacional controlado.
+* Uso de ferramentas pelo agente para executar ações externas.
+* Geração dinâmica de documentos.
+* Integração com serviços de e-mail.
+* Comunicação entre frontend, PHP e n8n.
+* Controle de acesso e limites de utilização no servidor.
+* Persistência de dados relacionados aos relatórios.
+* Sanitização de workflows para publicação de código.
 
 ## Sobre o projeto
 
-A YARA foi concebida como uma demonstração prática de como agentes de IA podem ser integrados a processos empresariais para coletar informações, estruturar diagnósticos e entregar resultados concretos por meio de automações.
+A YARA foi desenvolvida como uma demonstração prática de aplicação de inteligência artificial em processos de diagnóstico e automação empresarial.
 
-O projeto faz parte do portfólio de desenvolvimento web e soluções com inteligência artificial.
-
+O projeto combina **desenvolvimento web, inteligência artificial e automação de processos**, mostrando como um agente pode coletar informações, processar respostas, executar ferramentas e entregar um resultado concreto de forma automatizada.
