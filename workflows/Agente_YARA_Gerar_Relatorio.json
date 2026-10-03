@@ -1,0 +1,391 @@
+{
+  "name": "Agente_YARA_Gerar_Relatorio",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "query",
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "id": "dc3401a8-7a3c-45a0-8055-3f3e1adafbc3",
+      "name": "When called by another workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -128,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "function findReportText(obj) {\n  if (typeof obj === 'string') {\n    const t = obj.trim();\n    if (t.startsWith('{') && t.includes('oportunidades')) return t;\n    return null;\n  }\n  if (Array.isArray(obj)) {\n    for (const item of obj) {\n      const found = findReportText(item);\n      if (found) return found;\n    }\n    return null;\n  }\n  if (obj && typeof obj === 'object') {\n    for (const key of Object.keys(obj)) {\n      const found = findReportText(obj[key]);\n      if (found) return found;\n    }\n  }\n  return null;\n}\n\nconst raw = $input.first().json;\nconst rawContent = findReportText(raw);\n\nif (!rawContent) {\n  throw new Error('Não encontrei o texto gerado. Estrutura recebida: ' + JSON.stringify(raw));\n}\n\nconst cleaned = rawContent.replace(/```json/gi, '').replace(/```/g, '').trim();\nconst reportJson = JSON.parse(cleaned);\nconst input = $('When called by another workflow').first().json.query;\nconst id = 'rel_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);\n\nconst oportunidadesHtml = reportJson.oportunidades.map((o, i) => `\n  <div class=\"op\">\n    <h3>${i + 1}. ${o.titulo}</h3>\n    <p>${String(o.descricao).split(/\\n\\s*\\n/).join('</p><p>')}</p>\n  </div>\n`).join('');\n\nconst html = `\n<!DOCTYPE html>\n<html lang=\"pt-BR\">\n<head>\n<meta charset=\"UTF-8\">\n<style>\n  body { font-family: Arial, Helvetica, sans-serif; color: #1c1f26; padding: 40px; }\n  h1 { color: #2b3a67; font-size: 24px; margin-bottom: 4px; }\n  .subtitle { color: #6b7280; margin-bottom: 24px; font-size: 13px; }\n  .intro, .conclusao { font-size: 14px; line-height: 1.6; margin-bottom: 24px; }\n  .op { margin-bottom: 18px; padding: 14px 16px; border-left: 4px solid #6c8cff; background: #f5f7ff; border-radius: 6px; }\n  .op h3 { margin: 0 0 6px; font-size: 15px; color: #2b3a67; }\n  .op p { margin: 0; font-size: 13px; line-height: 1.5; }\n  .footer { margin-top: 32px; font-size: 11px; color: #9aa0ad; }\n</style>\n</head>\n<body>\n  <h1>Diagnóstico de Oportunidades de Automação</h1>\n  <div class=\"subtitle\">${input.empresa} — ${input.segmento} — ${input.cidade_estado}</div>\n  <div class=\"intro\"><p>${reportJson.introducao}</p></div>\n  <h2>Oportunidades de Automação</h2>\n  ${oportunidadesHtml}\n  <div class=\"conclusao\"><p>${reportJson.conclusao}</p></div>\n  <div class=\"footer\">Relatório gerado automaticamente pela YARA — Agente de IA de Diagnóstico de Automações.</div>\n</body>\n</html>`;\n\nreturn [{ json: { id, html, nome: input.nome, empresa: input.empresa, segmento: input.segmento, email: input.email } }];"
+      },
+      "id": "39ac3530-51ed-43ac-8da2-e88bfdbedeeb",
+      "name": "Montar HTML do Relatório",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.pdfshift.io/v3/convert/pdf",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ source: $json.html, landscape: false, use_print: false }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "43379726-f11e-4da8-bbb0-d81ef09f1cb7",
+      "name": "Converter HTML em PDF (PDFShift)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        608,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "relatorios-yara"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "nome": "={{ $('Preparar Mensagem e Anexo').item.json.nome }}",
+            "nome_empresa": "={{ $('Preparar Mensagem e Anexo').item.json.empresa }}",
+            "email": "={{ $('Preparar Mensagem e Anexo').item.json.email }}",
+            "area": "={{ $('Preparar Mensagem e Anexo').item.json.segmento }}",
+            "created_at": "={{ $now.toISO() }}",
+            "report_id": "={{ $('Preparar Mensagem e Anexo').item.json.id }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "nome",
+              "displayName": "nome",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "nome_empresa",
+              "displayName": "nome_empresa",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "area",
+              "displayName": "area",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "pdf_base64",
+              "displayName": "pdf_base64",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "report_id",
+              "displayName": "report_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "optimizeBulk": false
+        }
+      },
+      "id": "e3e7136c-4785-47b1-b443-e37e10c494fc",
+      "name": "Salvar em relatorios-yara",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        1248,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "name": "output",
+              "type": "string",
+              "value": "={{ $('Preparar Mensagem e Anexo').item.json.output }}",
+              "id": "c7f1952b-e2eb-4434-9d33-d212670134ef"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "7b7de35f-acc9-4f47-9408-aea9308ba238",
+      "name": "Mensagem Final",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1424,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4.1",
+          "mode": "list",
+          "cachedResultName": "gpt-4.1"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "Você gera relatórios de oportunidades de automação para pequenas e médias empresas. Responda APENAS em JSON válido, sem markdown, sem ```json, sem texto antes ou depois — apenas o objeto JSON puro, no formato:\n{\"introducao\": string, \"oportunidades\": [{\"titulo\": string, \"descricao\": string}], \"conclusao\": string}\n\nRegras de quantidade:\n- Gere no MÍNIMO 5 e no MÁXIMO 8 oportunidades.\n\nRegras de conteúdo obrigatório:\n- A primeira oportunidade deve SEMPRE ser \"Agente de atendimento inteligente para WhatsApp\". Se a empresa já possuir um agente ou automação de atendimento, apresente-a como evolução/otimização do que ela já tem.\n- Se o segmento indicar atendimento presencial de clientes (ex: clínica de estética, cabeleireiro, barbearia, odontologia, consultórios em geral), inclua também \"Agente de agendamento automático de atendimentos\".\n- As demais oportunidades NÃO são fixas: escolha-as de acordo com o segmento, o porte, as ferramentas e as automações atuais do negócio (ex: qualificação e follow-up de leads, cobrança e lembretes de pagamento, pós-venda e pesquisa de satisfação, confirmação de pedidos, organização de dados e relatórios automáticos, reativação de clientes inativos, integração entre sistemas que a empresa já usa).\n\nRegras de personalização:\n- Use os dados do negócio (empresa, segmento, número de colaboradores, cidade, site, ferramentas utilizadas e automações atuais) para tornar o relatório específico para ESTA empresa. Cite o nome da empresa e o segmento na introdução e use a realidade do negócio nos exemplos de cada oportunidade.\n- NÃO sugira algo que a empresa já tenha implementado (veja \"Automação/IA atual\"). Se já possuir algo parecido, proponha uma evolução ou complemento.\n- Considere as ferramentas que a empresa já usa para sugerir automações que se conectem a elas, sem citar o nome de ferramentas técnicas de implementação.\n- Adapte o tamanho e a complexidade das sugestões ao porte da empresa. Não invente informações sobre o negócio que não foram fornecidas.\n- Relatórios de empresas diferentes devem ter oportunidades, exemplos e redação diferentes entre si.\n\nRegras de implementação e linguagem:\n- TODAS as automações devem ser implementáveis via uma ou mais destas ferramentas: Evolution API (WhatsApp), n8n (workflows) e/ou widget de chat no site do cliente — nunca proponha ferramentas prontas de mercado como Zapier, RD Station, ManyChat, LeadLovers etc.\n- NUNCA mencione nomes de ferramentas técnicas usadas para implementar as automações (como n8n, Evolution API, OpenAI, GPT, ChatGPT, webhooks, APIs, workflows, etc.) no texto do relatório. O visitante não precisa saber qual tecnologia roda por trás — descreva cada oportunidade apenas em termos do RESULTADO e do BENEFÍCIO prático para o negócio (ex: \"um assistente virtual que responde seus clientes automaticamente pelo WhatsApp\", em vez de \"um agente construído com Evolution API e n8n\"). Mantenha a linguagem acessível para alguém sem conhecimento técnico.\n- Para cada oportunidade, a descrição deve ter DOIS parágrafos separados por uma linha em branco (\\n\\n): o primeiro explicando o que a automação faz na prática para esta empresa e o segundo apontando as vantagens de utilizá-la.\n- Priorize automações de baixa/média complexidade, focadas em ganho rápido de tempo e recursos.\n- A introdução deve falar sobre a importância de automatizar processos e usar IA como aliada do crescimento, mencionando a empresa pelo nome.\n- A conclusão deve encorajar a implementação e avisar que um especialista entrará em contato para montar uma proposta comercial."
+            },
+            {
+              "role": "user",
+              "content": "=Dados do negócio:\nNome do responsável: {{ $json.query.nome }}\nEmpresa: {{ $json.query.empresa }}\nSegmento: {{ $json.query.segmento }}\nColaboradores: {{ $json.query.colaboradores }}\nCidade/Estado: {{ $json.query.cidade_estado }}\nSite: {{ $json.query.site }}\nFerramentas usadas: {{ $json.query.ferramentas }}\nAutomação/IA atual: {{ $json.query.automacao_atual }}\n\nGere o relatório personalizado para esta empresa, seguindo todas as regras."
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "temperature": 0.7
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        80,
+        0
+      ],
+      "id": "2fc29414-c25b-47d0-92fb-a25f8b02a9ed",
+      "name": "Message a model"
+    },
+    {
+      "parameters": {
+        "jsCode": "const htmlNode = $('Montar HTML do Relatório').item.json;\n\nconst mensagemFinal = `Perfeito, ${htmlNode.nome}! Agradeço muito pelas informações. 🎉\n\nSeu diagnóstico foi gerado com sucesso! Enviamos uma cópia em PDF para o seu e-mail (${htmlNode.email}) — se não encontrar na caixa de entrada em alguns minutos, dá uma olhada na caixa de spam.\n\nEm breve um de nossos especialistas vai entrar em contato para conversar sobre como implementar essas automações. Muito obrigada pelo seu tempo! 🙌`;\n\nreturn [{\n  json: {\n    output: mensagemFinal,\n    id: htmlNode.id,\n    nome: htmlNode.nome,\n    empresa: htmlNode.empresa,\n    segmento: htmlNode.segmento,\n    email: htmlNode.email\n  },\n  binary: $input.first().binary\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        816,
+        0
+      ],
+      "id": "8574b987-6f08-4574-a168-43cbb6a83ac1",
+      "name": "Preparar Mensagem e Anexo"
+    },
+    {
+      "parameters": {
+        "sendTo": "=seu-email-interno@exemplo.com",
+        "subject": "=Novo relatório YARA — {{ $json.empresa }}",
+        "message": "=Novo diagnóstico gerado.\\n\\nNome: {{ $json.nome }}\\nEmpresa: {{ $json.empresa }}\\nSegmento: {{ $json.segmento }}\\nE-mail do visitante: {{ $json.email }}",
+        "options": {
+          "attachmentsUi": {
+            "attachmentsBinary": [
+              {}
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1040,
+        80
+      ],
+      "id": "741e4f11-dd86-4616-b8b6-47e3a63f8174",
+      "name": "Enviar Cópia por Email"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "Seu diagnóstico de oportunidades de automação — YARA",
+        "message": "=Olá, {{ $json.nome }}! Segue em anexo o relatório de oportunidades de automação gerado para a {{ $json.empresa }}. Em breve entraremos em contato para conversar sobre como implementar essas automações.",
+        "options": {
+          "appendAttribution": false,
+          "attachmentsUi": {
+            "attachmentsBinary": [
+              {}
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1040,
+        -112
+      ],
+      "id": "9e08254d-d684-448a-9dec-f7764a309fe3",
+      "name": "Enviar relatório para Cliente"
+    }
+  ],
+  "connections": {
+    "When called by another workflow": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar HTML do Relatório": {
+      "main": [
+        [
+          {
+            "node": "Converter HTML em PDF (PDFShift)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Converter HTML em PDF (PDFShift)": {
+      "main": [
+        [
+          {
+            "node": "Preparar Mensagem e Anexo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Salvar em relatorios-yara": {
+      "main": [
+        [
+          {
+            "node": "Mensagem Final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Montar HTML do Relatório",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Mensagem e Anexo": {
+      "main": [
+        [
+          {
+            "node": "Enviar Cópia por Email",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Enviar relatório para Cliente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar Cópia por Email": {
+      "main": [
+        [
+          {
+            "node": "Salvar em relatorios-yara",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "nodeGroups": [],
+  "tags": [],
+  "pinData": {}
+}

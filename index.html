@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YARA - Agente de Diagnóstico de Automações</title>
+</head>
+<body>
+    
+    <section>
+       <div class="container">
+          <div id="yara-app">
+              
+                        <!-- Máscara de senha -->
+          <div id="yara-gate">
+            <div class="yara-gate-box">
+              <h1>Agente de Diagnóstico de Automações</h1>
+              <p>Digite sua senha para ter acesso ao Agente</p>
+              <input
+                id="yara-password"
+                type="password"
+                maxlength="12"
+                autocomplete="off"
+                autocapitalize="characters"
+                spellcheck="false"
+              />
+              <button id="yara-submit" class="btn outline reveal reveal-up delay-3 active">Entrar</button>
+              <div id="yara-error"></div>
+            </div>
+          </div>
+
+          <!-- Tela de encerramento/aguarde -->
+          <div id="yara-closed">
+            <h2 id="yara-closed-title">Atendimento encerrado</h2>
+            <p id="yara-closed-text">
+              Obrigado! Em breve um especialista entrará em contato com você.
+            </p>
+          </div>
+
+          <!-- Container do widget de chat em tela cheia -->
+          <div class="yara">
+              <img src="imgs/Yara.webp" />
+              <div>
+                <h1>Olá 👋, eu sou a YARA!</h1>
+                <p>Sou uma Agente de Inteligência Artificial, meu objetivo é analisar o seu negócio para gerar um relatório personalizado de Oportunidades de Automações.</p>
+              </div>
+          </div>
+          <div id="n8n-chat"></div>
+
+        </div>
+      </div>
+    </section>
+
+     <!-- <Footer slot="footer" />-->
+
+
+
+    <script type="module">
+      import { createChat } from "https://cdn.jsdelivr.net/npm/@n8n/chat/dist/chat.bundle.es.js";
+
+      // Endpoints no próprio domínio (o proxy PHP repassa para o n8n)
+      const CHAT_WEBHOOK_URL = "/api/yara/chat.php";
+      const AUTH_URL = "/api/yara/auth.php";
+
+      const LOCK_MS = 5 * 60 * 1000; // 5 minutos
+      const gateEl = document.getElementById("yara-gate");
+      const closedEl = document.getElementById("yara-closed");
+      const closedTitleEl = document.getElementById("yara-closed-title");
+      const closedTextEl = document.getElementById("yara-closed-text");
+      const chatEl = document.getElementById("n8n-chat");
+      const passwordInput = document.getElementById("yara-password");
+      const submitBtn = document.getElementById("yara-submit");
+      const errorEl = document.getElementById("yara-error");
+      const loadingEl = document.getElementById("yara-loading");
+      const loadingTextEl = document.getElementById("yara-loading-text");
+
+      let chatInstance = null;
+      let reportDetected = false;
+      let capturedAnswers = [];
+      let lastBotText = "";
+      let loadingShown = false;
+
+      function now() {
+        return Date.now();
+      }
+
+      function getLockedUntil() {
+        return Number(localStorage.getItem("yara_locked_until") || 0);
+      }
+
+      function showGate() {
+        chatEl.style.display = "none";
+        closedEl.classList.remove("visible");
+        gateEl.classList.remove("hidden");
+        passwordInput.value = "";
+        errorEl.textContent = "";
+        passwordInput.focus();
+      }
+
+      function showClosedWaiting() {
+        gateEl.classList.add("hidden");
+        chatEl.style.display = "none";
+        closedTitleEl.textContent = "Atendimento encerrado";
+        closedTextEl.textContent =
+          "Obrigado pelas informações! Em breve um especialista entrará em contato. Esta janela ficará indisponível por alguns minutos.";
+        closedEl.classList.add("visible");
+      }
+
+      function showLoadingIndicator(nome, empresa) {
+        const nomeTexto = nome ? nome : "";
+        const empresaTexto = empresa ? ` para a ${empresa}` : "";
+        loadingTextEl.textContent = `Ok${nomeTexto ? ", " + nomeTexto : ""}, estou gerando o relatório de oportunidades${empresaTexto}. Isso pode levar um ou dois minutinhos, aguarde por favor.`;
+        loadingEl.classList.remove("hidden");
+      }
+
+      function hideLoadingIndicator() {
+        loadingEl.classList.add("hidden");
+      }
+
+      function startChat() {
+        gateEl.classList.add("hidden");
+        closedEl.classList.remove("visible");
+        chatEl.style.display = "block";
+
+        if (!chatInstance) {
+          localStorage.removeItem("sessionId");
+
+          chatInstance = createChat({
+            webhookUrl: CHAT_WEBHOOK_URL,
+            metadata: { senha: sessionStorage.getItem("yara_senha") || "" },
+            mode: "fullscreen",
+            target: "#n8n-chat",
+            showWelcomeScreen: false,
+            loadPreviousSession: false,
+            initialMessages: [
+              "Vamos começar? Gostaria que respondesse algumas perguntas para eu gerar seu relatório, de forma gratuita.",
+              "Me responda, qual é o seu nome?",
+            ],
+          });
+        }
+
+        watchBotMessages();
+        watchUserInput();
+        watchForCompletion();
+      }
+      
+      function disableChatInput() {
+          const textarea = chatEl.querySelector("textarea");
+          const sendButton = chatEl.querySelector("button[type='submit'], .chat-send-button");
+        
+          if (textarea) {
+            textarea.disabled = true;
+            textarea.placeholder = "Atendimento finalizado";
+            textarea.style.opacity = "0.5";
+            textarea.style.cursor = "not-allowed";
+          }
+        
+          if (sendButton) {
+            sendButton.disabled = true;
+            sendButton.style.opacity = "0.5";
+            sendButton.style.cursor = "not-allowed";
+            sendButton.style.pointerEvents = "none";
+          }
+        }
+
+
+        function watchForCompletion() {
+          const observer = new MutationObserver(() => {
+            if (reportDetected) return;
+            const text = chatEl.innerText || "";
+            if (text.includes("diagnóstico foi gerado com sucesso")) {
+              reportDetected = true;
+              hideLoadingIndicator();
+              disableChatInput();
+        
+              const lockedUntil = now() + LOCK_MS;
+              localStorage.setItem("yara_locked_until", String(lockedUntil));
+        
+              setTimeout(() => {
+                showClosedWaiting();
+                scheduleUnlockCheck();
+              }, 2 * 60 * 1000);
+            }
+          });
+          observer.observe(chatEl, { childList: true, subtree: true, characterData: true });
+        }
+
+      // Mantém sempre atualizado o texto da última mensagem do bot,
+      // pra sabermos quando a pergunta do WhatsApp foi feita
+      function watchBotMessages() {
+        const observer = new MutationObserver(() => {
+          const bubbles = chatEl.querySelectorAll('[class*="message"]');
+          if (bubbles.length) {
+            lastBotText = bubbles[bubbles.length - 1].innerText || "";
+          }
+        });
+        observer.observe(chatEl, { childList: true, subtree: true });
+      }
+
+      // Captura as respostas do visitante (nome e empresa) e detecta
+      // quando ele acabou de responder a pergunta do WhatsApp
+      function watchUserInput() {
+        function captureAnswerIfPresent() {
+          const inputEl = chatEl.querySelector("textarea, input[type='text']");
+          if (!inputEl || !inputEl.value || !inputEl.value.trim()) return;
+          const value = inputEl.value.trim();
+
+          if (capturedAnswers.length < 2) capturedAnswers.push(value);
+
+          if (lastBotText.toLowerCase().includes("whatsapp") && !loadingShown) {
+            loadingShown = true;
+            showLoadingIndicator(capturedAnswers[0], capturedAnswers[1]);
+          }
+        }
+
+        chatEl.addEventListener(
+          "keydown",
+          (e) => {
+            if (e.key === "Enter" && !e.shiftKey) captureAnswerIfPresent();
+          },
+          true
+        );
+
+        chatEl.addEventListener(
+          "click",
+          (e) => {
+            if (e.target.closest("button")) captureAnswerIfPresent();
+          },
+          true
+        );
+      }
+
+      function scheduleUnlockCheck() {
+        const interval = setInterval(() => {
+          if (now() >= getLockedUntil()) {
+            clearInterval(interval);
+            sessionStorage.removeItem("yara_unlocked");
+            sessionStorage.removeItem("yara_tipo");
+            sessionStorage.removeItem("yara_senha");
+            location.reload();
+          }
+        }, 5000);
+      }
+
+      function init() {
+        const lockedUntil = getLockedUntil();
+
+        if (now() < lockedUntil) {
+          showClosedWaiting();
+          scheduleUnlockCheck();
+          return;
+        }
+
+        if (sessionStorage.getItem("yara_unlocked") === "true") {
+          startChat();
+          return;
+        }
+
+        showGate();
+      }
+
+      submitBtn.addEventListener("click", handleSubmit);
+      passwordInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") handleSubmit();
+      });
+
+      let validando = false;
+
+      async function handleSubmit() {
+        if (validando) return;
+        const value = passwordInput.value.trim();
+        if (!value) return;
+
+        validando = true;
+        submitBtn.disabled = true;
+        errorEl.textContent = "Verificando...";
+
+        try {
+          const res = await fetch(AUTH_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ senha: value }),
+          });
+          const data = await res.json();
+
+          if (data.ok) {
+            sessionStorage.setItem("yara_unlocked", "true");
+            sessionStorage.setItem("yara_tipo", data.tipo);
+            sessionStorage.setItem("yara_senha", value);
+            errorEl.textContent = "";
+
+            startChat();
+          } else {
+            errorEl.textContent = data.mensagem || "Senha incorreta, por favor, tente novamente";
+            passwordInput.value = "";
+            passwordInput.focus();
+          }
+        } catch (err) {
+          errorEl.textContent = "Não foi possível validar a senha agora. Tente novamente em instantes.";
+        } finally {
+          validando = false;
+          submitBtn.disabled = false;
+        }
+      }
+
+      init();
+    </script>
+
+   <style>
+  /* RESET */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    @import url("https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Libre+Franklin:ital,wght@0,100..900;1,100..900&family=Lora:ital,wght@0,400..700;1,400..700&family=Montserrat:ital,wght@0,100..900;1,100..900&family=Raleway:ital,wght@0,100..900;1,100..900&family=Space+Grotesk:wght@300..700&display=swap");
+    
+    body {
+      background-color: #212328;
+      font-family: "Space Grotesk", sans-serif;
+      padding: 40px 0;
+    }
+    
+    h1,
+    h2,
+    h3,
+    p,
+    div,
+    span,
+    a,
+    input,
+    textarea,
+    button {
+      font-family: "Space Grotesk", sans-serif;
+    }
+    
+    .yara {
+        background: #1c1b21;
+        border-radius: 16px;
+          display: flex;
+          align-items: center;
+        gap: 15px;
+        padding: 15px;
+    }
+    
+    .yara h1 {
+      color: #dcdcdc;
+      margin-bottom: 20px;
+    }
+    
+    .yara p {
+      color: #dcdcdc;
+      font-size: 1.1rem;
+      line-height: 1.4rem;
+    } /*N8N CHAT*/
+    
+
+    #n8n-chat .chat-header .chat-heading h1 {
+      color: #dcdcdc;
+      font-size: 0 !important;
+      margin-bottom: 2rem;
+    }
+    
+
+    #n8n-chat .chat-header .chat-heading h1::after {
+      /*content: "Olá, eu sou a YARA! 👋"; font-size: 2rem;*/
+    }
+    
+    #n8n-chat .chat-messages-list {
+        height: 100%;
+        overflow-y: scroll;
+        padding-bottom: 180px;
+    }
+    
+    #n8n-chat .chat-header p {
+      display: none;
+    }
+    
+    #n8n-chat p {
+      color: #dcdcdc;
+      font-family: "Space Grotesk,system-ui,sans-serif";
+      font-size: 1.1rem;
+      margin-bottom: 0.6rem;
+    }
+    
+    #n8n-chat .chat-footer {
+      position: fixed;
+      bottom: 70px;
+      width: 100%;
+      max-width: 750px;
+    }
+    
+    #n8n-chat .chat-footer .chat-input .chat-inputs {
+      background-color: #1c1b21;
+      border: 1px solid #a5a5a5;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      margin-top: 40px;
+      padding: 4px;
+    }
+    
+    #n8n-chat .chat-footer .chat-input .chat-inputs textarea {
+      background-color: #1c1b21;
+      color: #dcdcdc;
+      height: 35px !important;
+      flex: 1 1 auto !important;
+      border: none;
+      width: 100% !important;
+      min-width: 0 !important;
+      padding: 4px 12px;
+    }
+    
+    #n8n-chat .chat-message-from-user p {
+      color: #A5A5A5;
+      font-weight: 300;
+      padding-left: 15px;
+    }
+    
+    #n8n-chat .chat-footer .chat-input .chat-inputs textarea:focus {
+      outline: none;
+      order: none;
+    }
+    
+    .chat-input-send-button {
+      background-color: #1c1b21;
+      border: none;
+    }
+    
+    .chat-input-send-button svg {
+      color: #a5a5a5;
+    }
+    
+    #n8n-chat .chat-footer .chat-input .chat-inputs-controls {
+      flex: 0 0 auto !important;
+    }
+    
+    #n8n-chat
+      .chat-footer
+      .chat-input
+      .chat-inputs-controls
+      button.chat-input-send-button {
+      flex: 0 0 auto !important;
+      width: 44px !important;
+      height: 44px !important;
+    } /*N8N CHAT*/
+    
+    #yara-app {
+      /*position: fixed; inset: 0;*/
+      margin: auto;
+      max-width: 800px;
+      border: 1px solid #333;
+      padding: 25px 25px 60px 25px;
+      border-radius: 12px;
+      width: 100%; /*height: calc(100vh - 180px);*/
+      height: 100%;
+    }
+    
+    main.chat-layout {
+      height: 100%;
+      position: relative;
+    } /* ---------- Máscara de senha ---------- */
+    
+    #yara-gate {
+      /*position: fixed;*/
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(circle at 50% 20%, #1b1e27 0%, #0b0c10 70%);
+      z-index: 9;
+    }
+    
+    #yara-gate.hidden {
+      display: none;
+    }
+    
+    .yara-gate-box {
+      width: min(90vw, 380px);
+      background: #171a22;
+      border: 1px solid #2a2e3a;
+      border-radius: 16px;
+      padding: 32px 28px;
+      text-align: center;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    }
+    
+    .yara-gate-box h1 {
+      color: #fff;
+      font-size: 20px;
+      margin: 0 0 6px;
+    }
+    
+    .yara-gate-box p {
+      color: #9aa0ad;
+      font-size: 14px;
+      margin: 0 0 20px;
+    }
+    
+    #yara-password {
+      width: 100%;
+      box-sizing: border-box;
+      text-align: center;
+      letter-spacing: 10px;
+      font-size: 22px;
+      padding: 12px 10px;
+      border-radius: 10px;
+      border: 1px solid #333846;
+      background: #0f1115;
+      color: #fff;
+      outline: none;
+    }
+    
+    #yara-password:focus {
+      /*border-color: #6c8cff;*/
+    }
+    
+    #yara-submit {
+      margin-top: 14px;
+      width: 100%;
+      padding: 12px;
+      border-radius: 10px;
+      border: none; /*background: #6c8cff;*/
+      color: #171a22;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    
+    #yara-submit:hover {
+      background: #5a78e6;
+    }
+    
+    #yara-error {
+      color: #ff6b6b;
+      font-size: 13px;
+      margin-top: 12px;
+      min-height: 16px;
+    } /* ---------- Tela de encerramento / aguarde ---------- */
+    
+    #yara-closed {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: #0b0c10;
+      color: #fff;
+      text-align: center;
+      z-index: 9998;
+      flex-direction: column;
+      padding: 24px;
+    }
+    
+    #yara-closed.visible {
+      display: flex;
+    }
+    
+    #yara-closed h2 {
+      font-size: 20px;
+      margin-bottom: 8px;
+    }
+    
+    #yara-closed p {
+      color: #9aa0ad;
+      max-width: 420px;
+    } /* ---------- Chat fullscreen ---------- */
+    
+    #n8n-chat {
+      width: 100%;
+      height: 100%;
+    } /*loading animation*/
+    
+    .yara-loading {
+      position: fixed; /*bottom: 24px; left: 50%;*/
+      /*transform: translateX(-50%);*/
+      background: rgba(0, 0, 0, 0.8);
+      border: 1px solid #2a2e3a;
+      border-radius: 12px;
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+      z-index: 10000;
+      width: 100%;
+      height: 100%;
+      top: 0;
+      
+    }
+    
+    .container-loading {
+        display: flex;
+        flex-direction: column;
+          max-width: 400px;
+          height: fit-content;
+    }
+    
+    .yara-loading.hidden {
+      display: none;
+    }
+    
+    .yara-loading p {
+      color: #fff;
+      font-size: 1.4rem;
+      margin: 0;
+      line-height: 1.2;
+      margin-top: 15px;
+    }
+    
+    .yara-spinner {
+      width: 40px;
+      height: 40px;
+      flex-shrink: 0;
+      border: 3px solid #333846;
+      border-top-color: #6c8cff;
+      border-radius: 50%;
+      animation: yara-spin 1.3s linear infinite;
+      margin: auto;
+    }
+    
+    @keyframes yara-spin {
+      to {
+        transform: rotate(360deg);
+      }
+    } /*loading animation*/
+    
+    @media (max-width: 1024px) {
+        #n8n-chat .chat-layout {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+    }
+    
+    @media (max-width: 600px) {
+        .yara {
+            display: block;
+            padding: 20px;
+        }
+        
+        .yara img {
+            display: block;
+            margin: auto;
+        }
+        
+        .yara h1 {
+            line-height: 2rem;
+            margin-top: 15px;
+            text-align: center;
+        }
+        
+        .yara p {
+            font-size: 1rem;
+            line-height: 1.2rem;
+            text-align: center;
+        }
+        
+        #n8n-chat .chat-footer{
+            max-width: 300px;
+        }
+        
+
+    }
+    
+    @media (min-width: 601px) and (max-width: 1024px) {
+        #n8n-chat .chat-footer{
+            max-width: 450px;
+            margin: auto;
+        }
+    }
+
+   </style>
+   
+       <div id="yara-loading" class="yara-loading hidden">
+        <div class="container-loading">
+          <div class="yara-spinner"></div>
+          <p id="yara-loading-text">Gerando seu relatório, aguarde...</p>
+        </div>
+    </div>
+
+    
+    </body>
+</html>
+
+  

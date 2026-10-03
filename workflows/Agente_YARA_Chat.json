@@ -1,0 +1,379 @@
+{
+  "name": "Agente_YARA_Chat",
+  "nodes": [
+    {
+      "parameters": {
+        "public": true,
+        "mode": "webhook",
+        "options": {
+          "allowedOrigins": "https://SEU-DOMINIO.exemplo.com",
+          "responseMode": "lastNode"
+        }
+      },
+      "id": "195c8a36-291a-42c9-aa05-326cf36302b7",
+      "name": "Chat Trigger",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "agente-yara-chat"
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o",
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "id": "69be63bc-68e5-4c1b-b93b-a634c5bcdf5b",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [
+        656,
+        94
+      ]
+    },
+    {
+      "parameters": {
+        "contextWindowLength": 30
+      },
+      "id": "521ff126-e6ef-4904-862c-45507ecf1d54",
+      "name": "Memória da Conversa",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        800,
+        94
+      ]
+    },
+    {
+      "parameters": {
+        "name": "gerar_relatorio_automacoes",
+        "description": "Chame esta ferramenta SOMENTE depois de ter coletado e validado as 10 respostas do visitante (nome, empresa, segmento, numero de colaboradores, cidade e estado, site, ferramentas utilizadas, automacoes/IA que ja possui, email valido e whatsapp valido com DDD). Ela gera o relatorio em PDF, salva os dados e retorna a mensagem final com o link de download.",
+        "workflowId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "Agente_YARA_Gerar_Relatorio"
+        },
+        "specifyInputSchema": true,
+        "jsonSchemaExample": "{\n  \"nome\": \"João Silva\",\n  \"empresa\": \"Empresa Exemplo LTDA\",\n  \"segmento\": \"Tecnologia\",\n  \"colaboradores\": \"10\",\n  \"cidade_estado\": \"Curitiba - PR\",\n  \"site\": \"exemplo.com.br\",\n  \"ferramentas\": \"RD Station, Zapier\",\n  \"automacao_atual\": \"não possui automação\",\n  \"email\": \"contato@exemplo.com.br\",\n  \"whatsapp\": \"11999999999\"\n}"
+      },
+      "id": "28998984-9f1e-4967-a4dc-9a65bd2f02f4",
+      "name": "Gerar Relatório (ferramenta)",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        944,
+        94
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.chatInput }}",
+        "options": {
+          "systemMessage": "=Você é YARA, uma Agente de IA cordial, amigável, objetiva e profissional. Seu ÚNICO papel é conduzir uma entrevista curta com o visitante para gerar um relatório de oportunidades de automação para o negócio dele. Você NÃO deve manter conversas paralelas, opinar sobre outros assuntos, ou responder perguntas fora desse fluxo.\n\nA mensagem de abertura e a primeira pergunta (nome) já foram exibidas na tela antes desta conversa começar. A partir daqui, colete UMA pergunta por vez, na ordem abaixo, sem pular nenhuma:\n\n1. Nome (já perguntado)\n2. Nome da empresa\n3. Segmento de atuação\n4. Número aproximado de colaboradores\n5. Cidade e estado\n6. Possui site? Se sim, qual o endereço? (se não possuir, prossiga normalmente)\n7. Quais softwares e ferramentas a empresa utiliza (ex: RD Station, Zapier, ERP etc)?\n8. Já possui alguma automação ou Agente de IA? Se sim, descreva brevemente.\n9. Qual é o melhor e-mail? — valide formato básico de e-mail (algo@algo.algo). Se inválido, peça para digitar novamente, explicando o motivo.\n10. Qual é o número de WhatsApp (DDD + número)? — para validar, ignore espaços, parênteses e hífens, e conte apenas os dígitos. Se o total de dígitos for 10 ou 11 (DDD com 2 dígitos + número com 8 ou 9 dígitos), o número é VÁLIDO — aceite e prossiga imediatamente, mesmo que o formato de digitação pareça diferente do exemplo. Só peça para digitar novamente se o total de dígitos for diferente de 10 ou 11.\n\nTOM DE VOZ ENTRE PERGUNTAS:\nDepois que o visitante responder às perguntas 1 a 9, antes de fazer a próxima, comece com uma breve confirmação positiva e natural (ex: \"Perfeito.\", \"Ótimo.\", \"Entendido.\", \"Combinado.\", \"Show.\"). Varie a expressão a cada vez, nunca repita a mesma duas vezes seguidas. Use o nome do visitante ocasionalmente (não em toda pergunta). Mantenha tudo em UMA única mensagem curta (confirmação + pergunta).\n\nATENÇÃO: essa regra de confirmação em texto vale SOMENTE entre as perguntas 1 e 9. Assim que o visitante responder a pergunta 10 (WhatsApp) e ela for válida, NÃO escreva nenhuma confirmação, nenhum \"vou gerar agora\", nenhuma frase de transição. Vá direto para a regra \"QUANDO TIVER TODAS AS 10 RESPOSTAS VÁLIDAS\" abaixo.\n\nIMPORTANTE — NÃO CONFUNDA VALIDAÇÃO COM OFF-TOPIC:\nSe o visitante responder novamente a MESMA pergunta (inclusive repetindo a mesma resposta) ou enviar uma resposta que pareça relacionada à pergunta atual (mesmo que em formato diferente), isso NUNCA conta como insistência/off-topic — trate normalmente como uma tentativa de responder. As regras de escalonamento abaixo (1ª, 2ª, 3ª vez) só se aplicam quando o visitante claramente muda de assunto, faz perguntas não relacionadas às 10 perguntas do formulário, ou tenta puxar papo sobre outro tema.\n\nIMPORTANTE — RESPOSTAS NEGATIVAS SÃO VÁLIDAS:\nPara as perguntas 6 (site), 7 (ferramentas) e 8 (automação atual), respostas como \"não\", \"não tenho\", \"nenhum\", \"nenhuma\", \"não uso nada\" são respostas VÁLIDAS e completas — significam que a empresa não possui aquele item. Aceite e siga para a próxima pergunta imediatamente. NUNCA trate esse tipo de resposta como off-topic ou insistência.\n\nREGRAS DE OFF-TOPIC:\n- 1ª vez: responda exatamente 'Não estou autorizada a manter conversas, meu papel é gerar um diagnóstico de oportunidades para o seu negócio. Podemos continuar?' e em seguida repita a pergunta pendente.\n- 2ª vez: responda exatamente 'Por favor, pode responder as perguntas para que eu possa gerar seu diagnóstico? Caso contrário serei obrigada a encerrar este atendimento.' e repita a pergunta pendente.\n- 3ª vez: responda exatamente 'Devido a sua insistência, esse atendimento está encerrado.' e não responda mais nada depois disso, independente do que o visitante disser.\n\nQUANDO TIVER TODAS AS 10 RESPOSTAS VÁLIDAS (isso inclui o momento logo após validar o WhatsApp):\nSua PRÓXIMA AÇÃO precisa ser OBRIGATORIAMENTE uma chamada da ferramenta 'gerar_relatorio_automacoes' — nunca uma mensagem de texto. Isso é uma regra técnica, não apenas de estilo: se você responder com texto nesse momento (mesmo um texto curto tipo \"vou gerar o relatório agora\" ou \"aguarde\"), o sistema não vai continuar automaticamente e a ferramenta nunca vai rodar, quebrando o atendimento.\n\nPortanto: ao identificar que as 10 respostas estão completas e válidas, chame a ferramenta IMEDIATAMENTE, sem escrever nenhuma palavra antes. A mensagem de agradecimento e o link do PDF virão prontos no retorno da própria ferramenta, e é esse texto (e só ele) que você deve repassar ao visitante em seguida — nada a mais, nada a menos.\n\nEXEMPLO DE COMPORTAMENTO CORRETO (para você seguir exatamente este padrão):\nVisitante: \"11999999999\" (resposta válida da pergunta 10)\nVocê: [chama a ferramenta gerar_relatorio_automacoes imediatamente, sem escrever nenhum texto]\n\nEXEMPLO DE COMPORTAMENTO ERRADO (nunca faça isso):\nVisitante: \"11999999999\" (resposta válida da pergunta 10)\nVocê: \"Obrigado! Vou gerar o relatório agora, aguarde.\" [ERRADO — isso impede a ferramenta de ser chamada]"
+        }
+      },
+      "id": "c9b5b2fb-db22-4d0f-9b4d-229171ce01ae",
+      "name": "Agente YARA",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        800,
+        -130
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "agente-yara-auth",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "https://SEU-DOMINIO.exemplo.com"
+        }
+      },
+      "id": "66ef1995-4bc7-4023-9397-8b6bc7eca9a6",
+      "name": "Webhook Senha",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        -260
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// =====================================================\n// CONFIGURAÇÃO DE SENHAS — edite apenas este bloco\n// =====================================================\nconst SENHA_NORMAL = 'TROQUE_ESTA_SENHA';       // senha comum\nconst SENHA_MESTRA = 'TROQUE_A_SENHA_MESTRA';       // senha mestra\nconst LIMITE_MESTRA_POR_DIA = 5;   // total de relatórios/dia da senha mestra\nconst FUSO_HORARIO = 'America/Sao_Paulo';\n// Senha normal = 1 relatório por senha. Para liberar outro relatório,\n// basta TROCAR o valor de SENHA_NORMAL acima (o controle reinicia sozinho).\n// =====================================================\n\nconst item = $input.first().json;\n\n// Chamada vinda do chat (tem chatInput/action) ou da tela de senha (webhook)\nconst ehChat = item.chatInput !== undefined || item.action !== undefined;\nconst senhaInformada = String(\n  ehChat ? ((item.metadata && item.metadata.senha) || '') : ((item.body && item.body.senha) || '')\n).trim().toUpperCase();\n\nconst sd = $getWorkflowStaticData('global');\nconst hoje = new Date().toLocaleDateString('en-CA', { timeZone: FUSO_HORARIO });\n\n// Contador diário da senha mestra\nif (!sd.mestra || sd.mestra.data !== hoje) {\n  sd.mestra = { data: hoje, usados: 0, sessoes: [] };\n}\n\n// Controle de uso único da senha normal (guarda só uma marca, não a senha)\nconst gerarMarca = (s) => {\n  let h = 5381;\n  for (const c of s) h = ((h * 33) ^ c.charCodeAt(0)) >>> 0;\n  return String(h);\n};\nconst marcaNormal = gerarMarca(SENHA_NORMAL.toUpperCase());\nif (!sd.normal || sd.normal.marca !== marcaNormal) {\n  sd.normal = { marca: marcaNormal, usada: false, sessao: null };\n}\n\nlet tipo = null;\nif (senhaInformada && senhaInformada === SENHA_NORMAL.toUpperCase()) tipo = 'normal';\nelse if (senhaInformada && senhaInformada === SENHA_MESTRA.toUpperCase()) tipo = 'mestra';\n\nlet ok = !!tipo;\nlet mensagem = '';\nif (!tipo) {\n  mensagem = ehChat\n    ? 'Acesso não autorizado. Atualize a página e informe a senha.'\n    : 'Senha incorreta, por favor, tente novamente';\n} else if (tipo === 'mestra' && sd.mestra.usados >= LIMITE_MESTRA_POR_DIA) {\n  ok = false;\n  mensagem = `O limite diário de ${LIMITE_MESTRA_POR_DIA} relatórios da senha mestra foi atingido. Tente novamente amanhã.`;\n} else if (tipo === 'normal' && sd.normal.usada) {\n  ok = false;\n  mensagem = 'Esta senha já foi utilizada para gerar um relatório. Solicite uma nova senha ao administrador.';\n}\n\nif (!ehChat) {\n  return [{ json: { rota: 'auth', ok, tipo: ok ? tipo : null, mensagem } }];\n}\nif (!ok) {\n  return [{ json: { rota: 'bloqueado', mensagem } }];\n}\nreturn [{ json: { ...item, rota: 'chat', tipo, dataHoje: hoje, marcaNormal } }];"
+      },
+      "id": "995c5c8b-3169-4ad5-b25b-2c9f883a4f42",
+      "name": "Validar Acesso",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        256,
+        -130
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "a7d774de-d33b-4610-8239-a62389b802ac",
+                    "leftValue": "={{ $json.rota }}",
+                    "rightValue": "auth",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renamedOutput": true,
+              "outputKey": "auth"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "da3934dd-de1a-42a9-8acc-8c019b94c593",
+                    "leftValue": "={{ $json.rota }}",
+                    "rightValue": "chat",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renamedOutput": true,
+              "outputKey": "chat"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "8523b785-9d13-4f68-87e2-2298f5401856",
+                    "leftValue": "={{ $json.rota }}",
+                    "rightValue": "bloqueado",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renamedOutput": true,
+              "outputKey": "bloqueado"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d2ccb601-0db3-4d91-ae83-08404ed95581",
+      "name": "Rotear",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        500,
+        -130
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: $json.ok, tipo: $json.tipo, mensagem: $json.mensagem }) }}",
+        "options": {}
+      },
+      "id": "15d86c83-ef5e-49e3-996b-1dd96e0398d6",
+      "name": "Responder Senha",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        800,
+        -340
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "38ff5bf1-5ac0-4477-a9d1-b3fc1797d65c",
+              "name": "output",
+              "type": "string",
+              "value": "={{ $json.mensagem }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "82f88b39-f059-4698-96cb-0f3546b22fc1",
+      "name": "Acesso Bloqueado",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        800,
+        -470
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Registra o uso quando a mensagem final de sucesso é devolvida\nconst sd = $getWorkflowStaticData('global');\nconst resposta = $input.first().json;\nconst texto = String(resposta.output ?? '');\nconst acesso = $('Validar Acesso').first().json;\n\nif (texto.includes('diagnóstico foi gerado com sucesso')) {\n  const sid = acesso.sessionId || 'sem-sessao';\n\n  if (acesso.tipo === 'mestra') {\n    if (!sd.mestra || sd.mestra.data !== acesso.dataHoje) {\n      sd.mestra = { data: acesso.dataHoje, usados: 0, sessoes: [] };\n    }\n    // evita contar duas vezes a mesma conversa\n    if (!sd.mestra.sessoes.includes(sid)) {\n      sd.mestra.sessoes.push(sid);\n      sd.mestra.usados += 1;\n    }\n  }\n\n  if (acesso.tipo === 'normal') {\n    // só marca se a senha ainda é a mesma da conversa (não foi trocada no meio)\n    if (sd.normal && sd.normal.marca === acesso.marcaNormal) {\n      sd.normal.usada = true;\n      sd.normal.sessao = sid;\n    }\n  }\n}\n\nreturn [{ json: { output: texto } }];"
+      },
+      "id": "603cd33b-1d65-4732-8ae4-0c06aad73059",
+      "name": "Contabilizar Relatório",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        -130
+      ]
+    }
+  ],
+  "connections": {
+    "Chat Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validar Acesso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agente YARA",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Memória da Conversa": {
+      "ai_memory": [
+        [
+          {
+            "node": "Agente YARA",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gerar Relatório (ferramenta)": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agente YARA",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Senha": {
+      "main": [
+        [
+          {
+            "node": "Validar Acesso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar Acesso": {
+      "main": [
+        [
+          {
+            "node": "Rotear",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rotear": {
+      "main": [
+        [
+          {
+            "node": "Responder Senha",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Agente YARA",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Acesso Bloqueado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agente YARA": {
+      "main": [
+        [
+          {
+            "node": "Contabilizar Relatório",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "nodeGroups": [],
+  "tags": [],
+  "pinData": {}
+}
