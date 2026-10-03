@@ -102,8 +102,6 @@ agente-diagnostico-automacao/
         └── config.example.php
 ```
 
-**Observação:** a estrutura acima corresponde à organização documentada do projeto. Confira os nomes e extensões dos arquivos no repositório antes de publicar este README.
-
 ## Como executar o projeto
 
 A execução completa exige um servidor PHP com suporte a cURL e uma instância do n8n configurada.
@@ -135,7 +133,7 @@ Verifique os caminhos relativos dos arquivos, incluindo o avatar em `imgs/Yara.w
 
 Este repositório contém uma versão sanitizada do projeto, preparada para apresentação pública e estudo técnico.
 
-Antes de publicar ou adaptar o projeto:
+Este repositório contém uma versão sanitizada do projeto. Ao configurar ou adaptar a aplicação:
 
 * Não inclua senhas reais, tokens, credenciais ou arquivos de configuração privados.
 * Utilize `config.example.php` como modelo e mantenha `config.php` fora do controle de versão.
